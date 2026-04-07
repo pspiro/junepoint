@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cat *)",
+      "Bash(ls *)",
+      "Bash(npm *)",
+      "Bash(node *)",
+      "Bash(npx *)",
+      "Bash(curl *)",
+      "Bash(echo *)",
+      "Bash(cmd *)",
+      "Bash(\"C:\\Program Files\\PostgreSQL\\16\\bin\\*\")"
+    ]
+  }
+}

@@ -1,0 +1,429 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  BROKER
+  BORROWER
+  UNDERWRITER
+  TITLE
+  INVESTOR
+  ADMIN
+}
+
+enum LoanStatus {
+  DRAFT
+  SUBMITTED
+  IN_REVIEW
+  CONDITIONALLY_APPROVED
+  APPROVED
+  IN_CLOSING
+  CLOSED
+  ON_MARKET
+  SOLD
+  SUSPENDED
+  DECLINED
+}
+
+enum LoanProgram {
+  BRIDGE
+  DSCR
+  FIX_FLIP
+  LONG_TERM_RENTAL
+  CONSTRUCTION
+  COMMERCIAL
+}
+
+enum DocumentStatus {
+  PENDING
+  PROCESSING
+  ACCEPTED
+  REJECTED
+}
+
+enum ConditionStatus {
+  OPEN
+  SATISFIED
+  WAIVED
+}
+
+enum ConditionParty {
+  BROKER
+  BORROWER
+  TITLE
+}
+
+enum AIAnalysisType {
+  COMPLETENESS
+  UNDERWRITING
+  DOCUMENT_PROCESSING
+  PROPERTY_RESEARCH
+  INVESTOR_MATCHING
+  CHAT
+}
+
+enum CreditDecision {
+  APPROVED
+  CONDITIONALLY_APPROVED
+  DECLINED
+  SUSPENDED
+}
+
+enum CtcStatus {
+  PENDING
+  RECEIVED
+  APPROVED
+}
+
+enum BidStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  WITHDRAWN
+}
+
+model User {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email         String    @unique @db.VarChar(255)
+  passwordHash  String?   @map("password_hash") @db.VarChar(255)
+  firstName     String    @map("first_name") @db.VarChar(100)
+  lastName      String    @map("last_name") @db.VarChar(100)
+  role          UserRole
+  companyName   String?   @map("company_name") @db.VarChar(255)
+  phone         String?   @db.VarChar(30)
+  mfaEnabled    Boolean   @default(false) @map("mfa_enabled")
+  isActive      Boolean   @default(true) @map("is_active")
+  cognitoSub    String?   @unique @map("cognito_sub") @db.VarChar(255)
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  lastLoginAt   DateTime? @map("last_login_at") @db.Timestamptz
+
+  brokerLoans       Loan[]           @relation("BrokerLoans")
+  borrowerLoans     Loan[]           @relation("BorrowerLoans")
+  assignedLoans     Loan[]           @relation("AssignedUwLoans")
+  decidedLoans      Loan[]           @relation("DecidedLoans")
+  borrowerProfiles  BorrowerProfile[]
+  documents         Document[]
+  conditions        Condition[]      @relation("CreatedConditions")
+  satisfiedConds    Condition[]      @relation("SatisfiedConditions")
+  aiAnalyses        AIAnalysis[]
+  messages          Message[]
+  notifications     Notification[]
+  investorCriteria  InvestorCriteria?
+  investorBids      InvestorBid[]
+  auditLogs         AuditLog[]
+  loanEvents        LoanEvent[]
+
+  @@map("users")
+}
+
+model Loan {
+  id              String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  loanNumber      String      @unique @map("loan_number") @db.VarChar(20)
+  brokerId        String      @map("broker_id") @db.Uuid
+  borrowerId      String?     @map("borrower_id") @db.Uuid
+  assignedUwId    String?     @map("assigned_uw_id") @db.Uuid
+  program         LoanProgram
+  status          LoanStatus  @default(DRAFT)
+  loanAmount      Decimal     @map("loan_amount") @db.Decimal(12, 2)
+  purpose         String?     @db.VarChar(500)
+  ltv             Decimal?    @db.Decimal(5, 2)
+  termMonths      Int?        @map("term_months")
+  interestRate    Decimal?    @map("interest_rate") @db.Decimal(5, 4)
+
+  propertyAddress String?     @map("property_address") @db.VarChar(500)
+  propertyCity    String?     @map("property_city") @db.VarChar(100)
+  propertyState   String?     @map("property_state") @db.Char(2)
+  propertyZip     String?     @map("property_zip") @db.VarChar(10)
+  propertyType    String?     @map("property_type") @db.VarChar(100)
+  propertyValue   Decimal?    @map("property_value") @db.Decimal(12, 2)
+  occupancyType   String?     @map("occupancy_type") @db.VarChar(50)
+  floodZone       String?     @map("flood_zone") @db.VarChar(20)
+
+  monthlyRent     Decimal?    @map("monthly_rent") @db.Decimal(10, 2)
+  dscr            Decimal?    @db.Decimal(5, 2)
+
+  aiCompletenessScore Int?    @map("ai_completeness_score")
+  aiRiskScore         Int?    @map("ai_risk_score")
+  aiRecommendation    String? @map("ai_recommendation") @db.VarChar(50)
+
+  creditDecision  CreditDecision? @map("credit_decision")
+  creditMemo      String?         @map("credit_memo")
+  decidedBy       String?         @map("decided_by") @db.Uuid
+  decidedAt       DateTime?       @map("decided_at") @db.Timestamptz
+  aiOverrideReason String?        @map("ai_override_reason")
+
+  fundedAt        DateTime?   @map("funded_at") @db.Timestamptz
+  wireAmount      Decimal?    @map("wire_amount") @db.Decimal(12, 2)
+  wireDate        DateTime?   @map("wire_date") @db.Date
+  wireReference   String?     @map("wire_reference") @db.VarChar(100)
+  recordingNumber String?     @map("recording_number") @db.VarChar(100)
+  recordingDate   DateTime?   @map("recording_date") @db.Date
+
+  createdAt       DateTime    @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt       DateTime    @updatedAt @map("updated_at") @db.Timestamptz
+
+  broker          User        @relation("BrokerLoans", fields: [brokerId], references: [id])
+  borrower        User?       @relation("BorrowerLoans", fields: [borrowerId], references: [id])
+  assignedUw      User?       @relation("AssignedUwLoans", fields: [assignedUwId], references: [id])
+  decider         User?       @relation("DecidedLoans", fields: [decidedBy], references: [id])
+  borrowerProfiles BorrowerProfile[]
+  documents       Document[]
+  conditions      Condition[]
+  aiAnalyses      AIAnalysis[]
+  messages        Message[]
+  notifications   Notification[]
+  loanEvents      LoanEvent[]
+  closingChecklist ClosingChecklist?
+  investorListing  InvestorListing?
+
+  @@map("loans")
+}
+
+model BorrowerProfile {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  loanId          String    @map("loan_id") @db.Uuid
+  userId          String    @map("user_id") @db.Uuid
+  ssnLast4        String?   @map("ssn_last4") @db.Char(4)
+  dateOfBirth     DateTime? @map("date_of_birth") @db.Date
+  citizenship     String?   @db.VarChar(100)
+  currentAddress  String?   @map("current_address") @db.VarChar(500)
+  currentCity     String?   @map("current_city") @db.VarChar(100)
+  currentState    String?   @map("current_state") @db.Char(2)
+  currentZip      String?   @map("current_zip") @db.VarChar(10)
+  yearsAtAddress  Int?      @map("years_at_address")
+  employerName    String?   @map("employer_name") @db.VarChar(255)
+  employmentType  String?   @map("employment_type") @db.VarChar(50)
+  yearsEmployed   Int?      @map("years_employed")
+  annualIncome    Decimal?  @map("annual_income") @db.Decimal(12, 2)
+  liquidAssets    Decimal?  @map("liquid_assets") @db.Decimal(12, 2)
+  totalLiabilities Decimal? @map("total_liabilities") @db.Decimal(12, 2)
+  monthlyExpenses Decimal?  @map("monthly_expenses") @db.Decimal(10, 2)
+  profileComplete Boolean   @default(false) @map("profile_complete")
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+
+  loan            Loan      @relation(fields: [loanId], references: [id], onDelete: Cascade)
+  user            User      @relation(fields: [userId], references: [id])
+
+  @@unique([loanId, userId])
+  @@map("borrower_profiles")
+}
+
+model Document {
+  id              String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  loanId          String          @map("loan_id") @db.Uuid
+  uploadedBy      String          @map("uploaded_by") @db.Uuid
+  fileName        String          @map("file_name") @db.VarChar(500)
+  s3Key           String          @unique @map("s3_key") @db.VarChar(1000)
+  s3Bucket        String          @map("s3_bucket") @db.VarChar(255)
+  contentType     String?         @map("content_type") @db.VarChar(100)
+  fileSize        BigInt?         @map("file_size")
+  docType         String?         @map("doc_type") @db.VarChar(100)
+  aiClassification String?        @map("ai_classification") @db.VarChar(100)
+  aiConfidence    Decimal?        @map("ai_confidence") @db.Decimal(4, 3)
+  status          DocumentStatus  @default(PENDING)
+  rejectionReason String?         @map("rejection_reason") @db.VarChar(500)
+  version         Int             @default(1)
+  replacesDocId   String?         @map("replaces_doc_id") @db.Uuid
+  contentText     String?         @map("content_text")
+  uploadedAt      DateTime        @default(now()) @map("uploaded_at") @db.Timestamptz
+  processedAt     DateTime?       @map("processed_at") @db.Timestamptz
+  createdAt       DateTime        @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt       DateTime        @updatedAt @map("updated_at") @db.Timestamptz
+
+  loan            Loan            @relation(fields: [loanId], references: [id], onDelete: Cascade)
+  uploader        User            @relation(fields: [uploadedBy], references: [id])
+  replacesDoc     Document?       @relation("DocVersions", fields: [replacesDocId], references: [id])
+  newerVersions   Document[]      @relation("DocVersions")
+  linkedConditions Condition[]    @relation("LinkedDoc")
+
+  @@map("documents")
+}
+
+model Condition {
+  id              String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  loanId          String          @map("loan_id") @db.Uuid
+  createdBy       String          @map("created_by") @db.Uuid
+  type            String          @db.VarChar(100)
+  description     String
+  status          ConditionStatus @default(OPEN)
+  responsibleParty ConditionParty @map("responsible_party")
+  dueDate         DateTime?       @map("due_date") @db.Date
+  linkedDocId     String?         @map("linked_doc_id") @db.Uuid
+  satisfiedBy     String?         @map("satisfied_by") @db.Uuid
+  satisfiedAt     DateTime?       @map("satisfied_at") @db.Timestamptz
+  createdAt       DateTime        @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt       DateTime        @updatedAt @map("updated_at") @db.Timestamptz
+
+  loan            Loan            @relation(fields: [loanId], references: [id], onDelete: Cascade)
+  creator         User            @relation("CreatedConditions", fields: [createdBy], references: [id])
+  satisfier       User?           @relation("SatisfiedConditions", fields: [satisfiedBy], references: [id])
+  linkedDoc       Document?       @relation("LinkedDoc", fields: [linkedDocId], references: [id])
+
+  @@map("conditions")
+}
+
+model AIAnalysis {
+  id              String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  loanId          String          @map("loan_id") @db.Uuid
+  triggeredBy     String?         @map("triggered_by") @db.Uuid
+  analysisType    AIAnalysisType  @map("analysis_type")
+  modelId         String          @map("model_id") @db.VarChar(100)
+  inputSnapshot   Json            @map("input_snapshot")
+  outputRaw       String          @map("output_raw")
+  scores          Json?
+  recommendation  String?         @db.VarChar(50)
+  reasoning       String?
+  tokensUsed      Int?            @map("tokens_used")
+  latencyMs       Int?            @map("latency_ms")
+  createdAt       DateTime        @default(now()) @map("created_at") @db.Timestamptz
+
+  loan            Loan            @relation(fields: [loanId], references: [id])
+  triggerer       User?           @relation(fields: [triggeredBy], references: [id])
+
+  @@map("ai_analyses")
+}
+
+model Message {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  loanId      String    @map("loan_id") @db.Uuid
+  senderId    String    @map("sender_id") @db.Uuid
+  body        String
+  sentAt      DateTime  @default(now()) @map("sent_at") @db.Timestamptz
+  readAt      DateTime? @map("read_at") @db.Timestamptz
+
+  loan        Loan      @relation(fields: [loanId], references: [id], onDelete: Cascade)
+  sender      User      @relation(fields: [senderId], references: [id])
+
+  @@map("messages")
+}
+
+model Notification {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId      String    @map("user_id") @db.Uuid
+  loanId      String?   @map("loan_id") @db.Uuid
+  type        String    @db.VarChar(100)
+  title       String    @db.VarChar(255)
+  body        String?
+  isRead      Boolean   @default(false) @map("is_read")
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  loan        Loan?     @relation(fields: [loanId], references: [id])
+
+  @@map("notifications")
+}
+
+model LoanEvent {
+  id          String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  loanId      String      @map("loan_id") @db.Uuid
+  actorId     String?     @map("actor_id") @db.Uuid
+  actorType   String?     @map("actor_type") @db.VarChar(50)
+  eventType   String      @map("event_type") @db.VarChar(100)
+  fromStatus  LoanStatus? @map("from_status")
+  toStatus    LoanStatus? @map("to_status")
+  payload     Json?
+  createdAt   DateTime    @default(now()) @map("created_at") @db.Timestamptz
+
+  loan        Loan        @relation(fields: [loanId], references: [id])
+  actor       User?       @relation(fields: [actorId], references: [id])
+
+  @@map("loan_events")
+}
+
+model ClosingChecklist {
+  id                    String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  loanId                String    @unique @map("loan_id") @db.Uuid
+  appraisalReceived     CtcStatus @default(PENDING) @map("appraisal_received")
+  titleCommitment       CtcStatus @default(PENDING) @map("title_commitment")
+  insuranceBinder       CtcStatus @default(PENDING) @map("insurance_binder")
+  floodCert             CtcStatus @default(PENDING) @map("flood_cert")
+  survey                CtcStatus @default(PENDING)
+  loanDocsSigned        CtcStatus @default(PENDING) @map("loan_docs_signed")
+  wireConfirmed         CtcStatus @default(PENDING) @map("wire_confirmed")
+  recordingConfirmed    CtcStatus @default(PENDING) @map("recording_confirmed")
+  customItems           Json      @default("[]") @map("custom_items")
+  updatedAt             DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+
+  loan                  Loan      @relation(fields: [loanId], references: [id], onDelete: Cascade)
+
+  @@map("closing_checklists")
+}
+
+model InvestorCriteria {
+  id          String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  investorId  String        @unique @map("investor_id") @db.Uuid
+  programs    LoanProgram[]
+  minAmount   Decimal?      @map("min_amount") @db.Decimal(12, 2)
+  maxAmount   Decimal?      @map("max_amount") @db.Decimal(12, 2)
+  maxLtv      Decimal?      @map("max_ltv") @db.Decimal(5, 2)
+  minYield    Decimal?      @map("min_yield") @db.Decimal(5, 4)
+  states      String[]      @db.Char(2)
+  updatedAt   DateTime      @updatedAt @map("updated_at") @db.Timestamptz
+
+  investor    User          @relation(fields: [investorId], references: [id], onDelete: Cascade)
+
+  @@map("investor_criteria")
+}
+
+model InvestorListing {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  loanId      String    @unique @map("loan_id") @db.Uuid
+  askingPrice Decimal   @map("asking_price") @db.Decimal(12, 2)
+  yield       Decimal   @db.Decimal(5, 4)
+  aiSummary   String?   @map("ai_summary")
+  listedAt    DateTime  @default(now()) @map("listed_at") @db.Timestamptz
+  soldAt      DateTime? @map("sold_at") @db.Timestamptz
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  loan        Loan      @relation(fields: [loanId], references: [id])
+  bids        InvestorBid[]
+
+  @@map("investor_listings")
+}
+
+model InvestorBid {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  listingId   String    @map("listing_id") @db.Uuid
+  investorId  String    @map("investor_id") @db.Uuid
+  bidAmount   Decimal   @map("bid_amount") @db.Decimal(12, 2)
+  terms       String?
+  status      BidStatus @default(PENDING)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+
+  listing     InvestorListing @relation(fields: [listingId], references: [id])
+  investor    User            @relation(fields: [investorId], references: [id])
+
+  @@map("investor_bids")
+}
+
+model AuditLog {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId      String?   @map("user_id") @db.Uuid
+  action      String    @db.VarChar(200)
+  resource    String?   @db.VarChar(100)
+  resourceId  String?   @map("resource_id") @db.Uuid
+  payload     Json?
+  ipAddress   String?   @map("ip_address")
+  userAgent   String?   @map("user_agent") @db.VarChar(500)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  user        User?     @relation(fields: [userId], references: [id])
+
+  @@map("audit_logs")
+}
+
+model PlatformConfig {
+  key       String   @id @db.VarChar(100)
+  value     String
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@map("platform_config")
+}
